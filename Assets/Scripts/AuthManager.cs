@@ -5,21 +5,25 @@ using TMPro;
 
 public class AuthManager : MonoBehaviour
 {
-    public TMP_InputField inputFieldUsername; 
+    public TMP_InputField inputFieldUsername;
     public TMP_InputField inputFieldPassword;
-
-    private string baseUrl = "https://sid-restapi.onrender.com"; // URL de la API
-    private string token; // Token de autenticación
+    public TMP_Text errorText;
+    public GameObject panelAuth; // Panel de autenticación
+    
+    private string baseUrl = "https://sid-restapi.onrender.com";
+    private string token;
     private string username;
 
     void Start()
     {
+        Logout();
         token = PlayerPrefs.GetString("token");
         username = PlayerPrefs.GetString("username");
 
         if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(username))
         {
-            Debug.Log("No hay token");
+            Debug.Log("No hay token, mostrar login");
+            panelAuth.SetActive(true);
         }
         else
         {
@@ -29,102 +33,72 @@ public class AuthManager : MonoBehaviour
 
     public void Login()
     {
-        Credentials credentials = new Credentials
-        {
-            username = inputFieldUsername.text,
-            password = inputFieldPassword.text
-        };
-
-        string postData = JsonUtility.ToJson(credentials);
-        StartCoroutine(LoginPost(postData));
+        Credentials credentials = new Credentials { username = inputFieldUsername.text, password = inputFieldPassword.text };
+        StartCoroutine(LoginPost(JsonUtility.ToJson(credentials)));
     }
 
     public void Registro()
     {
-        Credentials credentials = new Credentials
-        {
-            username = inputFieldUsername.text,
-            password = inputFieldPassword.text
-        };
-
-        string postData = JsonUtility.ToJson(credentials);
-        StartCoroutine(RegisterPost(postData));
+        Credentials credentials = new Credentials { username = inputFieldUsername.text, password = inputFieldPassword.text };
+        StartCoroutine(RegisterPost(JsonUtility.ToJson(credentials)));
     }
 
-    IEnumerator RegisterPost(string postData) 
+    IEnumerator RegisterPost(string postData)
     {
-        string path = "/api/usuarios";
-        using (UnityWebRequest www = new UnityWebRequest(baseUrl + path, "POST"))
+    string path = "/api/usuarios";
+    using (UnityWebRequest www = new UnityWebRequest(baseUrl + path, "POST"))
+    {
+        byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(postData);
+        www.uploadHandler = new UploadHandlerRaw(bodyRaw);
+        www.downloadHandler = new DownloadHandlerBuffer();
+        www.SetRequestHeader("Content-Type", "application/json");
+
+        yield return www.SendWebRequest();
+
+        if (www.result == UnityWebRequest.Result.Success)
         {
-            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(postData);
-            www.uploadHandler = new UploadHandlerRaw(bodyRaw);
-            www.downloadHandler = new DownloadHandlerBuffer();
-            www.SetRequestHeader("Content-Type", "application/json");
+            Debug.Log("Registro exitoso");
+            StartCoroutine(LoginPost(postData)); 
+        }
+        else
+        {
+            string errorMessage = www.downloadHandler.text; 
+            Debug.LogError("Error en registro: " + errorMessage);
 
-            yield return www.SendWebRequest();
-
-            if (www.result == UnityWebRequest.Result.ConnectionError || www.result == UnityWebRequest.Result.ProtocolError)
-            {
-                Debug.LogError("Error en registro: " + www.error);
-            }
-            else
-            {
-                if (www.responseCode == 200 || www.responseCode == 201)
-                {
-                    Debug.Log("Registro exitoso: " + www.downloadHandler.text);
-                    StartCoroutine(LoginPost(postData)); // Iniciar sesión después del registro
-                }
-                else
-                {
-                    Debug.LogError("Error en registro. Código: " + www.responseCode + "\nRespuesta: " + www.downloadHandler.text);
-                }
-            }
+            ShowError(errorMessage); 
         }
     }
-
+    }
+    
     IEnumerator LoginPost(string postData)
     {
-        string path = "/api/auth/login";
-        using (UnityWebRequest www = new UnityWebRequest(baseUrl + path, "POST"))
+    string path = "/api/auth/login";
+    using (UnityWebRequest www = new UnityWebRequest(baseUrl + path, "POST"))
+    {
+        byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(postData);
+        www.uploadHandler = new UploadHandlerRaw(bodyRaw);
+        www.downloadHandler = new DownloadHandlerBuffer();
+        www.SetRequestHeader("Content-Type", "application/json");
+
+        yield return www.SendWebRequest();
+
+        if (www.result == UnityWebRequest.Result.Success)
         {
-            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(postData);
-            www.uploadHandler = new UploadHandlerRaw(bodyRaw);
-            www.downloadHandler = new DownloadHandlerBuffer();
-            www.SetRequestHeader("Content-Type", "application/json");
-
-            yield return www.SendWebRequest();
-
-            if (www.result == UnityWebRequest.Result.ConnectionError || www.result == UnityWebRequest.Result.ProtocolError)
-            {
-                Debug.LogError("Error en login: " + www.error);
-            }
-            else
-            {
-                if (www.responseCode == 200)
-                {
-                    string json = www.downloadHandler.text;
-                    AuthResponse response = JsonUtility.FromJson<AuthResponse>(json);
-
-                    // Guardar el token y nombre de usuario
-                    PlayerPrefs.SetString("token", response.token);
-                    PlayerPrefs.SetString("username", response.usuario.username);
-                    PlayerPrefs.Save();
-
-                    // Ocultar la interfaz de autenticación
-                    GameObject panelAuth = GameObject.Find("PanelAuth");
-                    if (panelAuth != null)
-                    {
-                        panelAuth.SetActive(false);
-                    }
-
-                    Debug.Log("Login exitoso. Usuario: " + response.usuario.username);
-                }
-                else
-                {
-                    Debug.LogError("Error en login. Código: " + www.responseCode + "\nRespuesta: " + www.downloadHandler.text);
-                }
-            }
+            AuthResponse response = JsonUtility.FromJson<AuthResponse>(www.downloadHandler.text);
+            PlayerPrefs.SetString("token", response.token);
+            PlayerPrefs.SetString("username", response.usuario.username);
+            PlayerPrefs.Save();
+            panelAuth.SetActive(false);
+            Debug.Log("Login exitoso");
         }
+        else
+        {
+            string errorMessage = www.downloadHandler.text;
+            Debug.LogError("Error en login: " + errorMessage);
+
+            ShowError(errorMessage); 
+        }
+    }
     }
 
     IEnumerator GetPerfil()
@@ -169,6 +143,32 @@ public class AuthManager : MonoBehaviour
             }
         }
     }
+
+    public bool IsUserAuthenticated()
+    {
+    string storedToken = PlayerPrefs.GetString("token", "");
+    return !string.IsNullOrEmpty(storedToken);
+    }
+
+    public void Logout()
+    {
+    PlayerPrefs.DeleteKey("token");    
+    PlayerPrefs.DeleteKey("username"); 
+    PlayerPrefs.Save();                
+
+    panelAuth.SetActive(true);
+    Debug.Log("Sesión cerrada."); 
+    }
+
+    void ShowError(string message)
+    {
+    if (errorText != null)
+    {
+        errorText.text = "Error: " + message;
+        errorText.gameObject.SetActive(true);
+    }
+    }
+
 }
 
 // Clases para deserializar JSON 

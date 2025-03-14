@@ -5,12 +5,15 @@ public class FlappyScript : MonoBehaviour
 {
     public Sprite GetReadySprite;
     public float RotateUpSpeed = 1, RotateDownSpeed = 1;
-    public GameObject IntroGUI, DeathGUI;
+    public GameObject PanelAuth; 
+    public GameObject DeathGUI;
+    public GameObject LeaderboardPanel;  
     public Collider2D restartButtonGameCollider;
     public float VelocityPerJump = 3;
     public float XSpeed = 1;
 
-    FlappyYAxisTravelState flappyYAxisTravelState;
+    private AuthManager authManager;
+    private FlappyYAxisTravelState flappyYAxisTravelState;
 
     enum FlappyYAxisTravelState
     {
@@ -18,6 +21,34 @@ public class FlappyScript : MonoBehaviour
     }
 
     Vector3 birdRotation = Vector3.zero;
+
+    void Start()
+    {
+        authManager = FindObjectOfType<AuthManager>();
+        if (authManager == null)
+        {
+            Debug.LogError("AuthManager no encontrado en la escena");
+            return;
+        }
+
+
+        if (!authManager.IsUserAuthenticated())
+        {
+            PanelAuth.SetActive(true);
+        }
+        else
+        {
+            PanelAuth.SetActive(false);
+        }
+
+        DeathGUI.SetActive(false);
+        LeaderboardPanel.SetActive(false);
+    }
+
+    public void OnUserAuthenticated() 
+    {
+        PanelAuth.SetActive(false);
+    }
 
     void Update()
     {
@@ -27,12 +58,13 @@ public class FlappyScript : MonoBehaviour
         if (GameStateManager.GameState == GameState.Intro)
         {
             MoveBirdOnXAxis();
-            if (WasTouchedOrClicked())
+            
+            if (WasTouchedOrClicked() && authManager.IsUserAuthenticated())
             {
                 BoostOnYAxis();
                 GameStateManager.GameState = GameState.Playing;
-                IntroGUI.SetActive(false);
-                ScoreManagerScript.Score = 0;
+                PanelAuth.SetActive(false);
+                ScoreManagerScript.AddScore(-ScoreManagerScript.Score);
             }
         }
         else if (GameStateManager.GameState == GameState.Playing)
@@ -45,6 +77,7 @@ public class FlappyScript : MonoBehaviour
         }
         else if (GameStateManager.GameState == GameState.Dead)
         {
+            // Detectar clic en botón de reinicio
             Vector2 contactPoint = Vector2.zero;
 
             if (Input.touchCount > 0)
@@ -54,8 +87,7 @@ public class FlappyScript : MonoBehaviour
 
             if (restartButtonGameCollider == Physics2D.OverlapPoint(Camera.main.ScreenToWorldPoint(contactPoint)))
             {
-                GameStateManager.GameState = GameState.Intro;
-                Application.LoadLevel(Application.loadedLevelName);
+                RestartGame();
             }
         }
     }
@@ -107,7 +139,7 @@ public class FlappyScript : MonoBehaviour
         {
             if (col.gameObject.tag == "Pipeblank") 
             {
-                ScoreManagerScript.Score++;
+                ScoreManagerScript.AddScore(1);
             }
             else if (col.gameObject.tag == "Pipe")
             {
@@ -126,7 +158,20 @@ public class FlappyScript : MonoBehaviour
 
     void FlappyDies()
     {
+        PanelAuth.SetActive(false);
         GameStateManager.GameState = GameState.Dead;
         DeathGUI.SetActive(true);
+        LeaderboardPanel.SetActive(true);  
+        ScoreManagerScript.Instance.SubmitScore();  // Enviar el puntaje antes de mostrar el leaderboard
+        ScoreManagerScript.Instance.GetLeaderboard();
+    }
+
+    void RestartGame()
+    {
+        GameStateManager.GameState = GameState.Intro;
+        Application.LoadLevel(Application.loadedLevelName);
+        DeathGUI.SetActive(false);
+        LeaderboardPanel.SetActive(false); 
+        ScoreManagerScript.AddScore(-ScoreManagerScript.Score);
     }
 }
